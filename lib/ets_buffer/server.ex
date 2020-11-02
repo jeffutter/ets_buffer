@@ -1,4 +1,4 @@
-defmodule EtsBuffer.Server do
+defmodule ETSBuffer.Server do
   use GenServer
 
   def start_link(opts) do
@@ -7,9 +7,9 @@ defmodule EtsBuffer.Server do
 
   def list(name) do
     res =
-      case Registry.lookup(EtsBufferRegistry, name) do
+      case Registry.lookup(ETSBufferRegistry, name) do
         [] -> {:error, :not_found}
-        [{_, buffer}] -> EtsBuffer.list(buffer)
+        [{_, buffer}] -> ETSBuffer.list(buffer)
       end
 
     keepalive(name)
@@ -17,14 +17,14 @@ defmodule EtsBuffer.Server do
     res
   end
 
-  def push(pid, key, value) when is_pid(pid) do
-    GenServer.call(pid, {:push, key, value})
+  def push(pid, sort_key, event) when is_pid(pid) do
+    GenServer.call(pid, {:push, sort_key, event})
   end
 
-  def push(name, key, value) do
-    case Registry.lookup(EtsBufferRegistry, name) do
+  def push(name, sort_key, event) do
+    case Registry.lookup(ETSBufferRegistry, name) do
       [] -> {:error, :not_found}
-      [{pid, _}] -> push(pid, key, value)
+      [{pid, _}] -> push(pid, sort_key, event)
     end
   end
 
@@ -33,7 +33,7 @@ defmodule EtsBuffer.Server do
   end
 
   def keepalive(name) do
-    case Registry.lookup(EtsBufferRegistry, name) do
+    case Registry.lookup(ETSBufferRegistry, name) do
       [] -> :ok
       [{pid, _}] -> keepalive(pid)
     end
@@ -43,7 +43,7 @@ defmodule EtsBuffer.Server do
     name = Keyword.fetch!(opts, :name)
     inactivity_timeout = Keyword.get(opts, :inactivity_timeout, 30_000)
     max_size = Keyword.get(opts, :max_size, 20)
-    initial_value_fn = Keyword.get(opts, :initial_value_fn, fn -> [] end)
+    initial_event_fn = Keyword.get(opts, :initial_event_fn, fn -> [] end)
     save_fn = Keyword.get(opts, :save_fn, fn _ -> :ok end)
     save_timeout = Keyword.get(opts, :save_timeout, 60_000)
 
@@ -55,7 +55,7 @@ defmodule EtsBuffer.Server do
       inactivity_timeout: inactivity_timeout,
       save_fn: save_fn,
       save_timeout: save_timeout,
-      initial_value_fn: initial_value_fn,
+      initial_event_fn: initial_event_fn,
       max_size: max_size
     }
 
@@ -63,19 +63,19 @@ defmodule EtsBuffer.Server do
   end
 
   def handle_continue(:load, state) do
-    list = state.initial_value_fn.()
+    list = state.initial_event_fn.()
 
-    buffer = EtsBuffer.init(max_size: state.max_size)
-    buffer = EtsBuffer.replace(buffer, list)
-    {:ok, _pid} = Registry.register(EtsBufferRegistry, state.name, buffer)
+    buffer = ETSBuffer.init(max_size: state.max_size)
+    buffer = ETSBuffer.replace(buffer, list)
+    {:ok, _pid} = Registry.register(ETSBufferRegistry, state.name, buffer)
 
     schedule_save(state.save_timeout)
 
     {:noreply, %{state | buffer: buffer}, state.inactivity_timeout}
   end
 
-  def handle_call({:push, key, value}, _, state) do
-    EtsBuffer.push(state.buffer, key, value)
+  def handle_call({:push, sort_key, event}, _, state) do
+    ETSBuffer.push(state.buffer, sort_key, event)
     {:reply, :ok, state, state.inactivity_timeout}
   end
 
@@ -104,7 +104,7 @@ defmodule EtsBuffer.Server do
   end
 
   defp do_save(state) do
-    list = EtsBuffer.list(state.buffer)
+    list = ETSBuffer.list(state.buffer)
     state.save_fn.(list)
   end
 end

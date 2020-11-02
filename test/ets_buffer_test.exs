@@ -1,20 +1,20 @@
-defmodule EtsBufferTest do
+defmodule ETSBufferTest do
   use ExUnit.Case, async: false
 
   use PropCheck
   use PropCheck.StateM.ModelDSL
 
-  def key, do: oneof([binary(), atom()])
-  def value, do: any()
-  def event, do: {key(), value()}
-  def event_list, do: list(event())
+  def sort_key, do: oneof([binary(), atom()])
+  def event, do: any()
+  def entry, do: {sort_key(), event()}
+  def event_list, do: list(entry())
 
   property "Buffer", [:verbose, numtests: 500] do
     forall cmds <- commands(__MODULE__) do
       {_history, %{buffer: buffer} = _state, result} = run_commands(__MODULE__, cmds)
 
       if buffer do
-        EtsBuffer.destroy(buffer)
+        ETSBuffer.destroy(buffer)
       end
 
       result == :ok
@@ -29,7 +29,7 @@ defmodule EtsBufferTest do
 
   def command_gen(state) do
     frequency([
-      {6, {:push, [state.buffer, event()]}},
+      {6, {:push, [state.buffer, entry()]}},
       {3, {:list_buffer, [state.buffer]}},
       {1, {:replace, [state.buffer, event_list()]}}
     ])
@@ -39,7 +39,7 @@ defmodule EtsBufferTest do
 
   defcommand :create_buffer do
     def impl() do
-      EtsBuffer.init()
+      ETSBuffer.init()
     end
 
     def pre(_state, _args), do: true
@@ -52,33 +52,33 @@ defmodule EtsBufferTest do
   end
 
   defcommand :push do
-    def impl(buffer, {key, value}) do
-      EtsBuffer.push(buffer, key, value)
+    def impl(buffer, {sort_key, event}) do
+      ETSBuffer.push(buffer, sort_key, event)
     end
 
     def pre(_state, _arglist), do: true
 
-    def post(%{events: events}, [buffer, event], _result) do
-      events = add_event(events, event)
-      {:ok, buffer} = EtsBuffer.list(buffer)
+    def post(%{events: events}, [buffer, entry], _result) do
+      events = add_event(events, entry)
+      {:ok, buffer} = ETSBuffer.list(buffer)
       compare(events, buffer)
     end
 
-    def next(%{events: events} = state, [_buffer, event], _result) do
-      events = add_event(events, event)
+    def next(%{events: events} = state, [_buffer, entry], _result) do
+      events = add_event(events, entry)
       %{state | events: events}
     end
   end
 
   defcommand :replace do
     def impl(buffer, events) do
-      EtsBuffer.replace(buffer, events)
+      ETSBuffer.replace(buffer, events)
     end
 
     def pre(_state, _arglist), do: true
 
     def post(_state, [buffer, events], _result) do
-      {:ok, buffer} = EtsBuffer.list(buffer)
+      {:ok, buffer} = ETSBuffer.list(buffer)
       compare(trim_events(events), buffer)
     end
 
@@ -90,7 +90,7 @@ defmodule EtsBufferTest do
 
   defcommand :list_buffer do
     def impl(buffer) do
-      EtsBuffer.list(buffer)
+      ETSBuffer.list(buffer)
     end
 
     def pre(_state, _arglist), do: true
@@ -112,10 +112,10 @@ defmodule EtsBufferTest do
     model_events == events
   end
 
-  def add_event(events, {key, value}) do
+  def add_event(events, {sort_key, event}) do
     events
-    |> List.keydelete(key, 0)
-    |> Kernel.++([{key, value}])
+    |> List.keydelete(sort_key, 0)
+    |> Kernel.++([{sort_key, event}])
     |> Enum.sort_by(&elem(&1, 0))
     |> Enum.take(-20)
   end

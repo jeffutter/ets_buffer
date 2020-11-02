@@ -1,4 +1,11 @@
-defmodule EtsBuffer do
+defmodule ETSBuffer do
+  @external_resource "README.md"
+
+  @moduledoc "README.md"
+  |> File.read!()
+  |> String.split("<!-- MDOC !-->")
+  |> Enum.fetch!(1)
+
   defstruct table: nil, max_size: 20
 
   @type t :: %__MODULE__{table: nil | reference(), max_size: integer()}
@@ -18,14 +25,16 @@ defmodule EtsBuffer do
   end
 
   @spec push(t(), any, any) :: :ok
-  def push(%{table: table, max_size: max_size}, key, value) do
-    :ets.insert(table, {key, value})
+  def push(%{table: table, max_size: max_size}, sort_key, event) do
+    :ets.insert(table, {sort_key, event})
 
     if size(table) > max_size do
       case :ets.first(table) do
-        :"$end_of_table" -> :ok
-        key ->
-          :ets.delete(table, key)
+        :"$end_of_table" ->
+          :ok
+
+        sort_key ->
+          :ets.delete(table, sort_key)
       end
     end
 
@@ -33,8 +42,8 @@ defmodule EtsBuffer do
   end
 
   @spec delete(t(), any) :: :ok
-  def delete(%{table: table}, key)do
-    :ets.delete(table, key)
+  def delete(%{table: table}, sort_key) do
+    :ets.delete(table, sort_key)
 
     :ok
   end
@@ -81,9 +90,11 @@ defmodule EtsBuffer do
   @spec earliest_id(t()) :: any()
   def earliest_id(%{table: table}) do
     case :ets.first(table) do
-      :"$end_of_table" -> nil
-      key ->
-        :ets.delete(table, key)
+      :"$end_of_table" ->
+        nil
+
+      sort_key ->
+        :ets.delete(table, sort_key)
     end
   end
 
@@ -91,15 +102,15 @@ defmodule EtsBuffer do
   def latest_id(%{table: table}) do
     case :ets.last(table) do
       :"$end_of_table" -> nil
-      key -> key
+      sort_key -> sort_key
     end
   end
 
   defp prepare_for_replace(list, max_size) do
     list
-    |> Enum.reverse()
-    |> Enum.uniq_by(&elem(&1, 0))
-    |> Enum.reverse()
+    # To remove duplicate sort_keys, leaving only the last one
+    |> Map.new()
+    |> Map.to_list()
     |> Enum.sort_by(&elem(&1, 0))
     |> Enum.take(max_size * -1)
   end
