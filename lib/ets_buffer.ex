@@ -2,9 +2,9 @@ defmodule ETSBuffer do
   @external_resource "README.md"
 
   @moduledoc "README.md"
-  |> File.read!()
-  |> String.split("<!-- MDOC !-->")
-  |> Enum.fetch!(1)
+             |> File.read!()
+             |> String.split("<!-- MDOC !-->")
+             |> Enum.fetch!(1)
 
   defstruct table: nil, max_size: 20
 
@@ -25,7 +25,7 @@ defmodule ETSBuffer do
   end
 
   @spec push(t(), any, any) :: :ok
-  def push(%{table: table, max_size: max_size}, sort_key, event) do
+  def push(%{table: table, max_size: max_size} = buffer, sort_key, event) do
     :ets.insert(table, {sort_key, event})
 
     if size(table) > max_size do
@@ -34,7 +34,7 @@ defmodule ETSBuffer do
           :ok
 
         sort_key ->
-          :ets.delete(table, sort_key)
+          delete(buffer, sort_key)
       end
     end
 

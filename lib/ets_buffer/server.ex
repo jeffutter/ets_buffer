@@ -1,43 +1,56 @@
 defmodule ETSBuffer.Server do
+  @moduledoc """
+  A server implementation which wraps ETSBuffer.
+
+  Provides serialized writes and concurrent reads.
+  """
+
   use GenServer
 
+  # Public Functions
+
   def start_link(opts) do
-    GenServer.start_link(__MODULE__, opts, [])
+    name = Keyword.fetch!(opts, :name)
+    GenServer.start_link(__MODULE__, opts, name: name)
   end
 
-  def list(name) do
-    res =
-      case Registry.lookup(ETSBufferRegistry, name) do
-        [] -> {:error, :not_found}
-        [{_, buffer}] -> ETSBuffer.list(buffer)
-      end
-
-    keepalive(name)
-
-    res
+  def push(server, sort_key, event) do
+    GenServer.call(server, {:push, sort_key, event})
   end
 
-  def push(pid, sort_key, event) when is_pid(pid) do
-    GenServer.call(pid, {:push, sort_key, event})
+  def delete(server, sort_key) do
+    GenServer.call(server, {:delete, sort_key})
   end
 
-  def push(name, sort_key, event) do
-    case Registry.lookup(ETSBufferRegistry, name) do
-      [] -> {:error, :not_found}
-      [{pid, _}] -> push(pid, sort_key, event)
+  def replace(server, events) do
+    GenServer.call(server, {:replace, events})
+  end
+
+  def list({:via, Registry, {registry, name}}) do
+    case Registry.lookup(registry, name) do
+      [] ->
+        {:error, :not_found}
+
+      [{pid, buffer}] ->
+        res = ETSBuffer.list(buffer)
+        keepalive(pid)
+        res
     end
   end
 
-  def keepalive(pid) when is_pid(pid) do
-    GenServer.cast(pid, :keepalive)
+  def list(server) do
+    serialized_list(server)
   end
 
-  def keepalive(name) do
-    case Registry.lookup(ETSBufferRegistry, name) do
-      [] -> :ok
-      [{pid, _}] -> keepalive(pid)
-    end
+  def serialized_list(server) do
+    GenServer.call(server, :list)
   end
+
+  def keepalive(server) do
+    GenServer.cast(server, :keepalive)
+  end
+
+  # Callbacks
 
   def init(opts) do
     name = Keyword.fetch!(opts, :name)
@@ -49,8 +62,19 @@ defmodule ETSBuffer.Server do
 
     Process.flag(:trap_exit, true)
 
+    buffer = ETSBuffer.init(max_size)
+
+    case name do
+      {:via, Registry, {registry, name}} ->
+        Registry.keys(registry, self())
+        {_, nil} = Registry.update_value(registry, name, fn _ -> buffer end)
+
+      _ ->
+        :ok
+    end
+
     state = %{
-      buffer: nil,
+      buffer: buffer,
       name: name,
       inactivity_timeout: inactivity_timeout,
       save_fn: save_fn,
@@ -62,21 +86,34 @@ defmodule ETSBuffer.Server do
     {:ok, state, {:continue, :load}}
   end
 
-  def handle_continue(:load, state) do
+  def handle_continue(:load, %{buffer: buffer} = state) do
     list = state.initial_event_fn.()
 
-    buffer = ETSBuffer.init(max_size: state.max_size)
-    buffer = ETSBuffer.replace(buffer, list)
-    {:ok, _pid} = Registry.register(ETSBufferRegistry, state.name, buffer)
+    ETSBuffer.replace(buffer, list)
 
     schedule_save(state.save_timeout)
 
-    {:noreply, %{state | buffer: buffer}, state.inactivity_timeout}
+    {:noreply, state, state.inactivity_timeout}
   end
 
   def handle_call({:push, sort_key, event}, _, state) do
     ETSBuffer.push(state.buffer, sort_key, event)
     {:reply, :ok, state, state.inactivity_timeout}
+  end
+
+  def handle_call({:delete, sort_key}, _, state) do
+    ETSBuffer.delete(state.buffer, sort_key)
+    {:reply, :ok, state, state.inactivity_timeout}
+  end
+
+  def handle_call({:replace, events}, _, state) do
+    ETSBuffer.replace(state.buffer, events)
+    {:reply, :ok, state, state.inactivity_timeout}
+  end
+
+  def handle_call(:list, _, state) do
+    list = ETSBuffer.list(state.buffer)
+    {:reply, list, state, state.inactivity_timeout}
   end
 
   def handle_cast(:keepalive, state) do
