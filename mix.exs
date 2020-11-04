@@ -2,7 +2,7 @@ defmodule ETSBuffer.MixProject do
   use Mix.Project
 
   @name "ETSBuffer"
-  @version "0.2.0"
+  @version "0.2.1"
   @repo_url "https://github.com/jeffutter/ets_buffer"
 
   def project do
@@ -12,7 +12,7 @@ defmodule ETSBuffer.MixProject do
       version: @version,
       source_url: @repo_url,
       description: "Simple event buffer using ETS",
-      elixir: "~> 1.11",
+      elixir: "~> 1.10",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       package: package(),

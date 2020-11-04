@@ -34,18 +34,18 @@ defmodule ETSBuffer do
           :ok
 
         sort_key ->
-          delete(buffer, sort_key)
+          delete(buffer, [sort_key])
       end
     end
 
     :ok
   end
 
-  @spec delete(t(), any) :: :ok
-  def delete(%{table: table}, sort_key) do
-    :ets.delete(table, sort_key)
+  @spec delete(t(), list(any)) :: t()
+  def delete(%{table: table} = buffer, sort_keys) do
+    Enum.each(sort_keys, &:ets.delete(table, &1))
 
-    :ok
+    buffer
   end
 
   @spec replace(t(), list()) :: t()
@@ -83,18 +83,15 @@ defmodule ETSBuffer do
   @spec restore(%{max_size: integer, data: list()}) :: t()
   def restore(%{max_size: max_size, data: data}) do
     data = prepare_for_replace(data, max_size)
-    buffer = init(max_size: max_size)
+    buffer = init(max_size)
     replace(buffer, data)
   end
 
   @spec earliest_id(t()) :: any()
   def earliest_id(%{table: table}) do
     case :ets.first(table) do
-      :"$end_of_table" ->
-        nil
-
-      sort_key ->
-        :ets.delete(table, sort_key)
+      :"$end_of_table" -> nil
+      sort_key -> sort_key
     end
   end
 

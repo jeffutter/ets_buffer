@@ -66,7 +66,6 @@ defmodule ETSBuffer.Server do
 
     case name do
       {:via, Registry, {registry, name}} ->
-        Registry.keys(registry, self())
         {_, nil} = Registry.update_value(registry, name, fn _ -> buffer end)
 
       _ ->
