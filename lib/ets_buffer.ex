@@ -59,19 +59,16 @@ defmodule ETSBuffer do
 
   @spec list(t()) :: list()
   def list(%{table: table}) do
-    res =
-      table
-      |> :ets.tab2list()
-      |> Enum.map(&elem(&1, 1))
-
-    {:ok, res}
+    table
+    |> :ets.tab2list()
+    |> Enum.map(&elem(&1, 1))
   end
 
   @spec size(t()) :: integer()
   def size(table) do
     case :ets.info(table) do
       :undefined -> 0
-      info -> Keyword.get(info, :size)
+      info -> Keyword.get(info, :size, 0)
     end
   end
 

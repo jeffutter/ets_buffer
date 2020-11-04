@@ -60,7 +60,7 @@ defmodule ETSBufferTest do
 
     def post(%{events: events}, [buffer, entry], _result) do
       events = add_event(events, entry)
-      {:ok, buffer} = ETSBuffer.list(buffer)
+      buffer = ETSBuffer.list(buffer)
       compare(events, buffer)
     end
 
@@ -78,7 +78,7 @@ defmodule ETSBufferTest do
     def pre(_state, _arglist), do: true
 
     def post(_state, [buffer, events], _result) do
-      {:ok, buffer} = ETSBuffer.list(buffer)
+      buffer = ETSBuffer.list(buffer)
       compare(trim_events(events), buffer)
     end
 
@@ -95,7 +95,7 @@ defmodule ETSBufferTest do
 
     def pre(_state, _arglist), do: true
 
-    def post(%{events: events}, [_buffer], {:ok, result}) do
+    def post(%{events: events}, [_buffer], result) do
       compare(events, result)
     end
 
